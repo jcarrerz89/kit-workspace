@@ -1,0 +1,18 @@
+{
+  "id": "job-001",
+  "name": "feature-name",
+  "description": "Short description of the feature",
+  "repos": [
+    {
+      "project": "my-app",
+      "agents": [
+        {
+          "role": "developer",
+          "branch": "feature/feature-name",
+          "profile": "generic",
+          "description": "Implement feature-name: add X, update Y, test Z"
+        }
+      ]
+    }
+  ]
+}

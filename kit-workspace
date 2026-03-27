@@ -1,0 +1,660 @@
+#!/usr/bin/env bash
+# =============================================================================
+# kit-workspace — Main CLI for the kit-workspace multi-repo agent system
+# =============================================================================
+set -euo pipefail
+
+VERSION="1.0.0"
+KWS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+KWS_HOME="${HOME}/.kit-workspace"
+
+# Source all lib files
+source "${KWS_DIR}/lib/colors.sh"
+source "${KWS_DIR}/lib/log.sh"
+source "${KWS_DIR}/lib/common.sh"
+source "${KWS_DIR}/lib/utils.sh"
+source "${KWS_DIR}/lib/workspace.sh"
+source "${KWS_DIR}/lib/meta-orchestrator.sh"
+source "${KWS_DIR}/lib/mode-selector.sh"
+source "${KWS_DIR}/lib/worktree.sh"
+source "${KWS_DIR}/lib/checkpoint.sh"
+source "${KWS_DIR}/lib/notify.sh"
+source "${KWS_DIR}/lib/safety.sh"
+
+# Export key vars so sourced drivers/lib can reference them
+export KWS_DIR KWS_HOME
+
+# =============================================================================
+# Subcommand: init
+# =============================================================================
+cmd_init() {
+  workspace_init
+
+  local config_file="${KWS_HOME}/workspace.json"
+  if [ ! -f "$config_file" ]; then
+    cp "${KWS_DIR}/templates/workspace.json" "$config_file"
+    log_ok "Created: $config_file"
+  else
+    log_step "workspace.json already exists: $config_file"
+  fi
+
+  echo ""
+  echo "Workspace initialized. Edit ~/.kit-workspace/workspace.json to add your projects."
+  echo ""
+}
+
+# =============================================================================
+# Subcommand: add-project <name> <path> [--driver petfi-kit|generic]
+# =============================================================================
+cmd_add_project() {
+  local name="${1:-}"
+  local path="${2:-}"
+  local driver="generic"
+
+  if [ -z "$name" ] || [ -z "$path" ]; then
+    log_error "Usage: kit-workspace add-project <name> <path> [--driver petfi-kit|generic]"
+    exit 1
+  fi
+
+  # Parse optional --driver flag
+  shift 2
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --driver)
+        driver="${2:-generic}"
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  workspace_add_project "$name" "$path" "$driver"
+  echo "Added project '$name' (path=$path, driver=$driver)"
+}
+
+# =============================================================================
+# Subcommand: list-projects
+# =============================================================================
+cmd_list_projects() {
+  echo ""
+  echo -e "${BOLD}Registered projects:${NC}"
+  workspace_list_projects
+  echo ""
+}
+
+# =============================================================================
+# Subcommand: new [--name <name>] [--from-template]
+# =============================================================================
+cmd_new() {
+  local job_name=""
+  local from_template=false
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --name)
+        job_name="${2:-}"
+        shift 2
+        ;;
+      --from-template)
+        from_template=true
+        shift
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  # Copy from template if requested
+  if [ "$from_template" = "true" ]; then
+    local template="${KWS_DIR}/templates/job-single-repo.json"
+    if [ -z "$job_name" ]; then
+      read -rp "Job name: " job_name
+    fi
+    local target="${KWS_HOME}/jobs/${job_name}.json"
+    cp "$template" "$target"
+    log_ok "Created from template: $target"
+    echo "Edit $target to customize your job."
+    return 0
+  fi
+
+  # Interactive wizard
+  if [ -z "$job_name" ]; then
+    read -rp "Job name (e.g. my-feature): " job_name
+  fi
+
+  local job_description
+  read -rp "Description: " job_description
+
+  # Build repos array interactively
+  local repos_json="[]"
+  local add_more="y"
+
+  while [[ "$add_more" =~ ^[Yy] ]]; do
+    echo ""
+    echo "  Available projects:"
+    workspace_list_projects 2>/dev/null | sed 's/^/    /'
+
+    local project_name role branch profile description
+    read -rp "  Project name: " project_name
+    read -rp "  Agent role (e.g. developer, frontend, backend): " role
+    read -rp "  Branch (e.g. feature/${job_name}): " branch
+    read -rp "  Profile (generic|flutter|firebase|web) [generic]: " profile
+    profile="${profile:-generic}"
+    read -rp "  Description of what this agent should do: " description
+
+    # Check for depends_on
+    local depends_on_json="null"
+    read -rp "  Does this repo depend on other repos? (e.g. my-app) [leave blank for none]: " raw_deps
+    if [ -n "$raw_deps" ]; then
+      depends_on_json=$(echo "$raw_deps" | tr ',' '\n' | jq -R 'select(length > 0)' | jq -s '.')
+    fi
+
+    # Append this repo to repos array
+    repos_json=$(echo "$repos_json" | jq \
+      --arg project   "$project_name" \
+      --arg role      "$role" \
+      --arg branch    "$branch" \
+      --arg profile   "$profile" \
+      --arg desc      "$description" \
+      --argjson deps  "${depends_on_json:-null}" \
+      '. + [{
+        "project": $project,
+        "agents": [{
+          "role":        $role,
+          "branch":      $branch,
+          "profile":     $profile,
+          "description": $desc
+        }]
+      } | if $deps != null then . + {"depends_on": $deps} else . end]')
+
+    read -rp "Add another repo? [y/N]: " add_more
+    add_more="${add_more:-n}"
+  done
+
+  # Build final job JSON
+  local job_id
+  job_id="job-$(date +%Y%m%d%H%M%S)"
+
+  local job_json
+  job_json=$(jq -n \
+    --arg id          "$job_id" \
+    --arg name        "$job_name" \
+    --arg description "$job_description" \
+    --argjson repos   "$repos_json" \
+    '{
+      "id":          $id,
+      "name":        $name,
+      "description": $description,
+      "repos":       $repos
+    }')
+
+  local target="${KWS_HOME}/jobs/${job_name}.json"
+  echo "$job_json" > "$target"
+
+  echo ""
+  log_ok "Job saved: $target"
+  echo "  Run it with: kit-workspace run $target"
+  echo ""
+}
+
+# =============================================================================
+# Subcommand: run <job.json> [--mode 1|2|3|4] [--dry-run]
+# =============================================================================
+cmd_run() {
+  local job_path="${1:-}"
+  local mode=""
+  local dry_run="false"
+
+  if [ -z "$job_path" ]; then
+    log_error "Usage: kit-workspace run <job.json> [--mode 1|2|3|4] [--dry-run]"
+    exit 1
+  fi
+
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --mode)
+        mode="${2:-}"
+        shift 2
+        ;;
+      --dry-run)
+        dry_run="true"
+        shift
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  # Resolve path
+  if [ ! -f "$job_path" ]; then
+    # Try in jobs dir
+    if [ -f "${KWS_HOME}/jobs/${job_path}" ]; then
+      job_path="${KWS_HOME}/jobs/${job_path}"
+    elif [ -f "${KWS_HOME}/jobs/${job_path}.json" ]; then
+      job_path="${KWS_HOME}/jobs/${job_path}.json"
+    else
+      log_error "job.json not found: $job_path"
+      exit 1
+    fi
+  fi
+
+  # Validate JSON
+  if ! jq empty "$job_path" 2>/dev/null; then
+    log_error "Invalid JSON: $job_path"
+    exit 1
+  fi
+
+  # Export mode for drivers
+  if [ -n "$mode" ]; then
+    export KWS_MODE="$mode"
+  fi
+
+  export DRY_RUN="$dry_run"
+
+  if [ "$dry_run" = "true" ]; then
+    log_info "Dry-run mode: showing execution plan without running"
+    meta_run_job "$job_path" "true"
+  else
+    meta_run_job "$job_path" "false"
+  fi
+}
+
+# =============================================================================
+# Subcommand: status [<job-id>]
+# =============================================================================
+cmd_status() {
+  local job_id="${1:-}"
+  meta_status "$job_id"
+}
+
+# =============================================================================
+# Subcommand: dashboard
+# =============================================================================
+cmd_dashboard() {
+  meta_dashboard
+}
+
+# =============================================================================
+# Subcommand: logs <job-id> [--role <role>] [--follow]
+# =============================================================================
+cmd_logs() {
+  local job_id="${1:-}"
+  local role=""
+  local follow=false
+
+  if [ -z "$job_id" ]; then
+    log_error "Usage: kit-workspace logs <job-id> [--role <role>] [--follow]"
+    exit 1
+  fi
+
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --role)
+        role="${2:-}"
+        shift 2
+        ;;
+      --follow)
+        follow=true
+        shift
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  local log_file="${KWS_HOME}/state/${job_id}/${job_id}.log"
+
+  # If a role is specified, look in the per-repo state
+  if [ -n "$role" ]; then
+    # Find the repo that has this role log
+    local job_state="${KWS_HOME}/state/${job_id}/job.json"
+    if [ -f "$job_state" ]; then
+      while IFS= read -r project_name; do
+        local project_dir
+        project_dir=$(workspace_resolve_path "$project_name" 2>/dev/null || echo "")
+        if [ -n "$project_dir" ]; then
+          local candidate="${project_dir}/.kit-ws/state/${job_id}/${role}.log"
+          if [ -f "$candidate" ]; then
+            log_file="$candidate"
+            break
+          fi
+        fi
+      done < <(jq -r '.repos[].project' "$job_state" 2>/dev/null)
+    fi
+  fi
+
+  if [ ! -f "$log_file" ]; then
+    log_error "Log file not found: $log_file"
+    exit 1
+  fi
+
+  if [ "$follow" = "true" ]; then
+    tail -f "$log_file"
+  else
+    tail -100 "$log_file"
+  fi
+}
+
+# =============================================================================
+# Subcommand: stop <job-id>
+# =============================================================================
+cmd_stop() {
+  local job_id="${1:-}"
+
+  if [ -z "$job_id" ]; then
+    log_error "Usage: kit-workspace stop <job-id>"
+    exit 1
+  fi
+
+  local job_state_dir="${KWS_HOME}/state/${job_id}"
+
+  if [ ! -d "$job_state_dir" ]; then
+    log_error "Job not found: $job_id"
+    exit 1
+  fi
+
+  log_info "Stopping job: $job_id"
+
+  # Find and kill all agent PIDs from per-repo state
+  local job_json_path="${job_state_dir}/job.json"
+  if [ -f "$job_json_path" ]; then
+    while IFS= read -r project_name; do
+      local project_dir
+      project_dir=$(workspace_resolve_path "$project_name" 2>/dev/null || echo "")
+      if [ -z "$project_dir" ]; then continue; fi
+
+      local repo_state="${project_dir}/.kit-ws/state/${job_id}"
+      if [ ! -d "$repo_state" ]; then continue; fi
+
+      # Kill any backgrounded agent processes
+      for pid_file in "${repo_state}"/*.pid; do
+        [ -f "$pid_file" ] || continue
+        local pid
+        pid=$(cat "$pid_file")
+        if kill -0 "$pid" 2>/dev/null; then
+          kill -SIGTERM "$pid" 2>/dev/null || true
+          log_step "Sent SIGTERM to PID $pid ($(basename "$pid_file" .pid))"
+        fi
+      done
+
+      # Kill tmux sessions for this job
+      tmux list-sessions -F "#{session_name}" 2>/dev/null \
+        | grep "^kws-${job_id}-" \
+        | while read -r session; do
+            tmux kill-session -t "$session" 2>/dev/null || true
+            log_step "Killed tmux session: $session"
+          done
+
+      # Discard checkpoint
+      export PROJECT_DIR="$project_dir"
+      CHECKPOINT_DIR="${repo_state}"
+      checkpoint_discard 2>/dev/null || true
+
+      # Clean up worktrees
+      if [ -f "$job_json_path" ]; then
+        local repo_json
+        repo_json=$(jq -c --arg p "$project_name" '.repos[] | select(.project == $p)' "$job_json_path" 2>/dev/null || echo "{}")
+        worktree_cleanup "$project_dir" "$repo_json" 2>/dev/null || true
+      fi
+
+    done < <(jq -r '.repos[].project' "$job_json_path" 2>/dev/null)
+  fi
+
+  echo "stopped" > "${job_state_dir}/status"
+  log_ok "Job '$job_id' stopped."
+}
+
+# =============================================================================
+# Subcommand: clean [--all] [--job <job-id>]
+# =============================================================================
+cmd_clean() {
+  local clean_all=false
+  local target_job=""
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --all)
+        clean_all=true
+        shift
+        ;;
+      --job)
+        target_job="${2:-}"
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  local state_dir="${KWS_HOME}/state"
+
+  if [ -n "$target_job" ]; then
+    # Remove specific job
+    local job_dir="${state_dir}/${target_job}"
+    if [ ! -d "$job_dir" ]; then
+      log_error "Job not found: $target_job"
+      exit 1
+    fi
+    rm -rf "$job_dir"
+    log_ok "Removed state for job: $target_job"
+    return 0
+  fi
+
+  if [ "$clean_all" = "true" ]; then
+    read -rp "Remove ALL job state including running? [y/N]: " confirm
+    if [[ ! "$confirm" =~ ^[Yy] ]]; then
+      echo "Aborted."
+      return 0
+    fi
+    rm -rf "${state_dir:?}"/*
+    log_ok "All job state removed."
+    return 0
+  fi
+
+  # Default: remove completed and failed jobs
+  local removed=0
+  for job_dir in "${state_dir}"/*/; do
+    [ -d "$job_dir" ] || continue
+    local status
+    status=$(cat "${job_dir}/status" 2>/dev/null || echo "unknown")
+    case "$status" in
+      completed|failed|discarded)
+        rm -rf "$job_dir"
+        log_step "Removed: $(basename "$job_dir") [$status]"
+        removed=$((removed + 1))
+        ;;
+    esac
+  done
+
+  if [ "$removed" -eq 0 ]; then
+    echo "Nothing to clean (no completed/failed jobs)."
+  else
+    log_ok "Removed $removed job(s)."
+  fi
+}
+
+# =============================================================================
+# Subcommand: doctor
+# =============================================================================
+cmd_doctor() {
+  local ok=true
+
+  echo ""
+  echo -e "${BOLD}kit-workspace doctor${NC}"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+  # Check required dependencies
+  echo ""
+  echo "Dependencies:"
+  for dep in git jq tmux claude; do
+    if command -v "$dep" &>/dev/null; then
+      echo -e "  ${GREEN}✓${NC} $dep"
+    else
+      echo -e "  ${RED}✗${NC} $dep (not found)"
+      ok=false
+    fi
+  done
+
+  # Check workspace.json exists
+  echo ""
+  echo "Configuration:"
+  local config_file="${KWS_HOME}/workspace.json"
+  if [ -f "$config_file" ]; then
+    if jq empty "$config_file" 2>/dev/null; then
+      echo -e "  ${GREEN}✓${NC} workspace.json exists and is valid JSON"
+    else
+      echo -e "  ${RED}✗${NC} workspace.json exists but is invalid JSON"
+      ok=false
+    fi
+  else
+    echo -e "  ${RED}✗${NC} workspace.json not found ($config_file)"
+    echo "    Run: kit-workspace init"
+    ok=false
+  fi
+
+  # Check project paths
+  if [ -f "$config_file" ] && jq empty "$config_file" 2>/dev/null; then
+    echo ""
+    echo "Project paths:"
+    while IFS=$'\t' read -r name rel_path driver; do
+      local resolved
+      resolved=$(workspace_resolve_path "$name" 2>/dev/null || echo "")
+      if [ -d "$resolved" ]; then
+        echo -e "  ${GREEN}✓${NC} $name → $resolved"
+      else
+        echo -e "  ${RED}✗${NC} $name → $resolved (not found)"
+        ok=false
+      fi
+    done < <(jq -r '.projects // {} | to_entries[] | [.key, .value.path, .value.driver] | @tsv' "$config_file" 2>/dev/null || true)
+  fi
+
+  echo ""
+  if [ "$ok" = "true" ]; then
+    echo -e "  ${GREEN}All checks passed.${NC}"
+  else
+    echo -e "  ${YELLOW}Some checks failed. See above for details.${NC}"
+  fi
+  echo ""
+}
+
+# =============================================================================
+# Subcommand: version
+# =============================================================================
+cmd_version() {
+  echo "kit-workspace v${VERSION}"
+}
+
+# =============================================================================
+# Subcommand: help
+# =============================================================================
+cmd_help() {
+  cat << EOF
+
+${BOLD}kit-workspace v${VERSION}${NC}
+Multi-repo agent orchestration toolkit.
+
+${BOLD}USAGE${NC}
+  kit-workspace <command> [options]
+
+${BOLD}COMMANDS${NC}
+  init
+      Initialise ~/.kit-workspace/ and create a default workspace.json.
+
+  add-project <name> <path> [--driver petfi-kit|generic]
+      Register a project. Default driver: generic.
+
+  list-projects
+      List all registered projects with their path and driver.
+
+  new [--name <name>] [--from-template]
+      Interactive wizard to create a new job.json.
+      --from-template  Copy the single-repo template instead of wizard.
+
+  run <job.json> [--mode 1|2|3|4] [--dry-run]
+      Execute a job. job.json can be a path or a name in ~/.kit-workspace/jobs/.
+      --mode 1   Supervised (tmux, you watch)
+      --mode 2   Semi-auto (tmux, auto-accept)
+      --mode 3   Fire & Forget (headless)
+      --mode 4   Agent Teams (headless, parallel)
+      --dry-run  Print the execution plan without running.
+
+  status [<job-id>]
+      Without job-id: one-liner status for all jobs.
+      With job-id: detailed status for that job.
+
+  dashboard
+      Render a full visual table of all jobs.
+
+  logs <job-id> [--role <role>] [--follow]
+      Tail log output for a job. --role targets a specific agent log.
+      --follow  Stream updates (tail -f).
+
+  stop <job-id>
+      Send SIGTERM to all agent processes and clean up worktrees.
+
+  clean [--all] [--job <job-id>]
+      Remove state for completed/failed jobs.
+      --all         Remove all state (prompts for confirmation).
+      --job <id>    Remove state for a specific job.
+
+  doctor
+      Check dependencies and configuration.
+
+  version
+      Print the version string.
+
+  help
+      Show this message.
+
+${BOLD}EXAMPLES${NC}
+  kit-workspace init
+  kit-workspace add-project my-app ~/code/my-app
+  kit-workspace run ~/.kit-workspace/jobs/my-feature.json --dry-run
+  kit-workspace run job-001.json --mode 3
+  kit-workspace status job-001
+  kit-workspace logs job-001 --role developer --follow
+
+${BOLD}DOCS${NC}
+  https://github.com/your-org/kit-workspace
+
+EOF
+}
+
+# =============================================================================
+# Main dispatcher
+# =============================================================================
+main() {
+  local cmd="${1:-help}"
+  shift || true
+
+  case "$cmd" in
+    init)            cmd_init "$@" ;;
+    add-project)     cmd_add_project "$@" ;;
+    list-projects)   cmd_list_projects "$@" ;;
+    new)             cmd_new "$@" ;;
+    run)             cmd_run "$@" ;;
+    status)          cmd_status "$@" ;;
+    dashboard)       cmd_dashboard "$@" ;;
+    logs)            cmd_logs "$@" ;;
+    stop)            cmd_stop "$@" ;;
+    clean)           cmd_clean "$@" ;;
+    doctor)          cmd_doctor "$@" ;;
+    version|-v|--version) cmd_version ;;
+    help|-h|--help)  cmd_help ;;
+    *)
+      log_error "Unknown command: $cmd"
+      echo "Run 'kit-workspace help' for usage."
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"

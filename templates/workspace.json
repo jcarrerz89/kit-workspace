@@ -1,0 +1,17 @@
+{
+  "name": "my-workspace",
+  "projects_root": "~/Documents/sources",
+  "projects": {
+    "my-app": {
+      "path": "my-app",
+      "driver": "generic"
+    },
+    "my-app-backend": {
+      "path": "my-app-backend",
+      "driver": "generic"
+    }
+  },
+  "apps": {
+    "my-app": ["my-app", "my-app-backend"]
+  }
+}

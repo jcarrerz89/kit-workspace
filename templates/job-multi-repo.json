@@ -1,0 +1,30 @@
+{
+  "id": "job-002",
+  "name": "cross-repo-feature",
+  "description": "Feature that spans frontend and backend",
+  "repos": [
+    {
+      "project": "my-app",
+      "agents": [
+        {
+          "role": "frontend",
+          "branch": "feature/cross-repo-feature",
+          "profile": "generic",
+          "description": "Build the UI for cross-repo-feature"
+        }
+      ]
+    },
+    {
+      "project": "my-app-backend",
+      "depends_on": ["my-app"],
+      "agents": [
+        {
+          "role": "backend",
+          "branch": "feature/cross-repo-feature",
+          "profile": "generic",
+          "description": "Build the API endpoints for cross-repo-feature"
+        }
+      ]
+    }
+  ]
+}
