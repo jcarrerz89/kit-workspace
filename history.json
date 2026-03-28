@@ -1,0 +1,22 @@
+[
+  {
+    "id": "job-improve-listing-selector",
+    "name": "improve-listing-selector",
+    "description": "Redesign the ListingTypeSelector component to be visually clear and engaging",
+    "merged_at": "2026-03-28T02:11:02Z",
+    "repos": [
+      {
+        "project": "nogal",
+        "branches": [
+          "feature/improve-listing-selector"
+        ],
+        "agents": [
+          {
+            "role": "frontend",
+            "description": "Redesign the ListingTypeSelector component at /Users/jimmycarrera/Documents/sources/nogal/nomades-webapp/src/app/components/ListingTypeSelector.tsx\n\nCurrent problems:\n- Both cards look identical (plain white, same border, same gray icons)\n- No visual hierarchy — nothing draws the eye to either option\n- Step icons are all gray and indistinct\n- Cards feel flat, no sense of affordance or action\n- No subtitle or supporting copy to help the user decide\n\nRequirements:\n- Keep all existing routing (href /listing/form/person and /listing/form/room) unchanged\n- Keep all existing imports and framework (Tailwind CSS, FontAwesome, Next.js Link)\n- Do NOT add new npm dependencies\n- The Storybook story at ListingTypeSelector.stories.tsx should still work (no props needed)\n\nDesign direction:\n1. Give each card a strong visual identity:\n   - Person card (I Look for a Room): warm green/emerald accent (bg-success already defined). Add a colored top band or gradient header area.\n   - Room card (I Have a Room to Rent): blue/info accent (bg-info already defined). Same treatment.\n2. Make the cards feel like real CTAs — larger prominent title, visible arrow or chevron that animates on hover\n3. Add a short subtitle under each heading (1 sentence) explaining the path\n4. Make the step icons colored (matching the card accent) instead of all gray\n5. Add hover lift effect: shadow + slight translateY on the cards\n6. Mobile: stack vertically with good spacing\n7. Add a short page heading above the grid: 'What would you like to do?'\n\nOnly edit ListingTypeSelector.tsx. Do not touch any other files."
+          }
+        ]
+      }
+    ]
+  }
+]
