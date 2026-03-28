@@ -75,24 +75,25 @@ async function loadDashboard() {
 
     const rows = await Promise.all(jobDirs.map(async jobId => {
       const base = `${stateDir}/${jobId}`
-      const [status, startedAt, jobJsonRaw] = await Promise.all([
+      const [status, startedAt, jobJsonRaw, sessionType] = await Promise.all([
         readFile(`${base}/status`).catch(() => 'unknown'),
         readFile(`${base}/started_at`).catch(() => '—'),
         readFile(`${base}/job.json`).catch(() => null),
+        readFile(`${base}/type`).catch(() => ''),
       ])
       let jobName = jobId
-      let repoCount = '—'
       if (jobJsonRaw) {
-        try {
-          const j = JSON.parse(jobJsonRaw)
-          jobName = j.name || jobId
-          repoCount = (j.repos || []).length
-        } catch {}
+        try { jobName = JSON.parse(jobJsonRaw).name || jobId } catch {}
       }
-      return { jobId, jobName, status: status.trim(), startedAt: startedAt.trim().slice(0, 16), repoCount }
+      return {
+        jobId,
+        jobName,
+        status:      status.trim(),
+        startedAt:   startedAt.trim().slice(0, 16),
+        sessionType: sessionType.trim(),
+      }
     }))
 
-    // Newest first
     rows.sort((a, b) => b.jobId.localeCompare(a.jobId))
 
     tbody.innerHTML = rows.map(r => `
@@ -100,8 +101,8 @@ async function loadDashboard() {
         <td class="mono">${r.jobId}</td>
         <td>${escHtml(r.jobName)}</td>
         <td>${statusBadge(r.status)}</td>
+        <td>${r.sessionType ? typeBadge(r.sessionType) : '<span class="type-pending">—</span>'}</td>
         <td class="mono">${r.startedAt}</td>
-        <td>${r.repoCount}</td>
         <td>
           <div style="display:flex;gap:6px">
             ${r.status === 'completed' ? `<button class="btn btn-sm btn-primary" onclick="mergeJob('${r.jobId}')">Merge</button>` : ''}
@@ -130,8 +131,8 @@ function _projectRow(name, p, indent) {
       <div class="proj-row-path mono">${escHtml(p.path)}</div>
       <div class="proj-row-actions">
         <button class="btn btn-sm btn-primary"
-          onclick="openFeatureModal('${escHtml(name)}', '${escHtml(p.driver)}')">
-          + Feature
+          onclick="openSessionModal('${escHtml(name)}', ${JSON.stringify([name])})">
+          + Session
         </button>
       </div>
     </div>`
@@ -165,8 +166,8 @@ async function loadProjects() {
               <span class="app-group-count">${projectList.length} project${projectList.length !== 1 ? 's' : ''}</span>
             </div>
             <button class="btn btn-sm btn-primary"
-              onclick="openAppFeatureModal('${escHtml(appName)}', ${JSON.stringify(projectList)})">
-              + App Feature
+              onclick="openSessionModal('${escHtml(appName)}', ${JSON.stringify(projectList)})">
+              + Session
             </button>
           </div>
           <div class="app-group-children">`)
@@ -310,167 +311,53 @@ window.stopJob = async (jobId) => {
   loadDashboard()
 }
 
-// ── New Feature modal ──────────────────────────────────────
-let _featureProject = ''
-let _featureDriver  = ''
+// ── Session modal ───────────────────────────────────────────
+let _sessionTarget   = ''
+let _sessionProjects = []
 
-window.openFeatureModal = (projectName, driver) => {
-  _featureProject = projectName
-  _featureDriver  = driver
+window.openSessionModal = (target, projects) => {
+  _sessionTarget   = target
+  _sessionProjects = projects
 
-  document.getElementById('feature-project-name').textContent = projectName
-  document.getElementById('feature-name').value       = ''
-  document.getElementById('feature-desc').value       = ''
-  document.getElementById('feature-agent-desc').value = ''
-  document.getElementById('feature-output').classList.add('hidden')
-  document.getElementById('feature-output').textContent = ''
+  document.getElementById('session-target-display').textContent = target
+  document.getElementById('session-name').value  = ''
+  document.getElementById('session-desc').value  = ''
+  document.getElementById('session-refine').checked = false
+  document.getElementById('session-output').classList.add('hidden')
+  document.getElementById('session-output').textContent = ''
 
-  // Pre-select role based on driver
-  const roleSelect = document.getElementById('feature-role')
-  roleSelect.value = driver === 'petfi-kit' ? 'frontend' : 'developer'
-
-  document.getElementById('feature-modal').classList.remove('hidden')
-  setTimeout(() => document.getElementById('feature-name').focus(), 50)
+  document.getElementById('session-modal').classList.remove('hidden')
+  setTimeout(() => document.getElementById('session-name').focus(), 50)
 }
 
-function closeFeatureModal() {
-  document.getElementById('feature-modal').classList.add('hidden')
+function closeSessionModal() {
+  document.getElementById('session-modal').classList.add('hidden')
 }
 
-async function startFeature() {
-  const name       = document.getElementById('feature-name').value.trim().replace(/\s+/g, '-').toLowerCase()
-  const desc       = document.getElementById('feature-desc').value.trim()
-  const agentDesc  = document.getElementById('feature-agent-desc').value.trim()
-  const role       = document.getElementById('feature-role').value
-  const mode       = document.getElementById('feature-mode').value
-  const refine     = document.getElementById('feature-refine').checked
+async function startSession() {
+  const name   = document.getElementById('session-name').value.trim().replace(/\s+/g, '-').toLowerCase()
+  const desc   = document.getElementById('session-desc').value.trim()
+  const mode   = document.getElementById('session-mode').value
+  const refine = document.getElementById('session-refine').checked
 
-  if (!name) { document.getElementById('feature-name').focus(); return }
+  if (!name)  { document.getElementById('session-name').focus(); return }
+  if (!desc)  { document.getElementById('session-desc').focus(); return }
 
-  const output = document.getElementById('feature-output')
+  const output = document.getElementById('session-output')
   output.classList.remove('hidden')
-  output.textContent = 'Creating job…'
+  output.textContent = 'Starting session…'
 
-  // Build job.json
-  const jobId = `job-${new Date().toISOString().replace(/[-:T]/g,'').slice(0,15)}`
-  const job = {
-    id:          jobId,
-    name,
-    description: desc,
-    repos: [{
-      project: _featureProject,
-      agents: [{
-        role,
-        branch:      `feature/${name}`,
-        profile:     _featureDriver === 'petfi-kit' ? 'flutter' : 'generic',
-        description: agentDesc || desc,
-      }]
-    }]
-  }
+  const args = ['session', 'start', _sessionTarget, name, desc, '--mode', mode]
+  if (refine) args.push('--refine')
 
   try {
-    const home    = await homeDir()
-    const jobPath = `${home}/.kit-workspace/jobs/${name}.json`
-    await writeFile(jobPath, JSON.stringify(job, null, 2))
-    output.textContent = `Job saved: ${jobPath}\nStarting…`
-
-    const runArgs = ['run', jobPath, '--mode', mode]
-    if (refine) runArgs.push('--refine')
-    const result = await kit(...runArgs)
+    const result = await kit(...args)
     const text = (result.stdout + result.stderr).replace(/\x1b\[[0-9;]*m/g, '')
-    output.textContent = text
+    output.textContent = text || (result.success ? 'Session started.' : 'Failed — no output captured.')
 
     if (result.success) {
       setTimeout(() => {
-        closeFeatureModal()
-        switchTab('dashboard')
-      }, 1500)
-    }
-  } catch (e) {
-    output.textContent = `Error: ${e}`
-  }
-}
-
-// ── App Feature modal ───────────────────────────────────────
-let _appFeatureName = ''
-let _appFeatureProjects = []
-
-window.openAppFeatureModal = (appName, projects) => {
-  _appFeatureName = appName
-  _appFeatureProjects = projects
-
-  document.getElementById('app-feature-app-name').textContent = appName
-  document.getElementById('app-feature-name').value       = ''
-  document.getElementById('app-feature-desc').value       = ''
-  document.getElementById('app-feature-agent-desc').value = ''
-  document.getElementById('app-feature-refine').checked   = false
-  document.getElementById('app-feature-output').classList.add('hidden')
-  document.getElementById('app-feature-output').textContent = ''
-
-  // Render project checkboxes (all pre-checked)
-  const container = document.getElementById('app-feature-projects')
-  container.innerHTML = projects.map(p => `
-    <label class="checkbox-item">
-      <input type="checkbox" name="app-project" value="${escHtml(p)}" checked />
-      <span>${escHtml(p)}</span>
-    </label>`).join('')
-
-  document.getElementById('app-feature-modal').classList.remove('hidden')
-  setTimeout(() => document.getElementById('app-feature-name').focus(), 50)
-}
-
-function closeAppFeatureModal() {
-  document.getElementById('app-feature-modal').classList.add('hidden')
-}
-
-async function startAppFeature() {
-  const name      = document.getElementById('app-feature-name').value.trim().replace(/\s+/g, '-').toLowerCase()
-  const desc      = document.getElementById('app-feature-desc').value.trim()
-  const agentDesc = document.getElementById('app-feature-agent-desc').value.trim()
-  const mode      = document.getElementById('app-feature-mode').value
-  const refine    = document.getElementById('app-feature-refine').checked
-
-  if (!name) { document.getElementById('app-feature-name').focus(); return }
-
-  // Collect checked projects
-  const checked = [...document.querySelectorAll('input[name="app-project"]:checked')].map(el => el.value)
-  if (!checked.length) { alert('Select at least one project.'); return }
-
-  const output = document.getElementById('app-feature-output')
-  output.classList.remove('hidden')
-  output.textContent = 'Creating job…'
-
-  const jobId = `job-${new Date().toISOString().replace(/[-:T]/g,'').slice(0,15)}`
-  const job = {
-    id:          jobId,
-    name,
-    description: desc,
-    repos: checked.map(project => ({
-      project,
-      agents: [{
-        role:        'developer',
-        branch:      `feature/${name}`,
-        profile:     'generic',
-        description: agentDesc || desc,
-      }]
-    }))
-  }
-
-  try {
-    const home    = await homeDir()
-    const jobPath = `${home}/.kit-workspace/jobs/${name}.json`
-    await writeFile(jobPath, JSON.stringify(job, null, 2))
-    output.textContent = `Job saved: ${jobPath}\nStarting…`
-
-    const runArgs = ['run', jobPath, '--mode', mode]
-    if (refine) runArgs.push('--refine')
-    const result = await kit(...runArgs)
-    const text = (result.stdout + result.stderr).replace(/\x1b\[[0-9;]*m/g, '')
-    output.textContent = text
-
-    if (result.success) {
-      setTimeout(() => {
-        closeAppFeatureModal()
+        closeSessionModal()
         switchTab('dashboard')
       }, 1500)
     }
@@ -514,6 +401,12 @@ function statusBadge(status) {
   return `<span class="badge badge-${cls}">${status}</span>`
 }
 
+function typeBadge(type) {
+  const map = { feature:'feature', fix:'fix', refactor:'refactor', chore:'chore', research:'research' }
+  const cls = map[type] || 'unknown'
+  return `<span class="badge badge-type-${cls}">${type}</span>`
+}
+
 // ── Boot ───────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   // Tab navigation
@@ -524,18 +417,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Refresh button
   document.getElementById('refresh-btn').addEventListener('click', () => loadTab(activeTab))
 
-  // New Feature modal
-  document.getElementById('feature-modal-cancel').addEventListener('click', closeFeatureModal)
-  document.getElementById('feature-modal-confirm').addEventListener('click', startFeature)
-  document.getElementById('feature-modal').addEventListener('click', e => {
-    if (e.target === e.currentTarget) closeFeatureModal()
-  })
-
-  // App Feature modal
-  document.getElementById('app-feature-modal-cancel').addEventListener('click', closeAppFeatureModal)
-  document.getElementById('app-feature-modal-confirm').addEventListener('click', startAppFeature)
-  document.getElementById('app-feature-modal').addEventListener('click', e => {
-    if (e.target === e.currentTarget) closeAppFeatureModal()
+  // Session modal
+  document.getElementById('session-modal-cancel').addEventListener('click', closeSessionModal)
+  document.getElementById('session-modal-confirm').addEventListener('click', startSession)
+  document.getElementById('session-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeSessionModal()
   })
 
   // Run job modal

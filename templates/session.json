@@ -1,0 +1,8 @@
+{
+  "id":          "ses-20260101-000000",
+  "name":        "session-name",
+  "description": "What this session is about — one clear sentence.",
+  "target":      "my-app",
+  "projects":    ["my-app"],
+  "created_at":  "2026-01-01T00:00:00Z"
+}

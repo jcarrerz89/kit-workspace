@@ -59,6 +59,13 @@ merge_job() {
 
   if [ "$any_failed" -eq 0 ]; then
     _history_record "$job_json" "$job_id"
+    # Infer and record session type from commit messages
+    local session_type
+    session_type=$(session_infer_type "$job_id" 2>/dev/null || echo "")
+    if [ -n "$session_type" ]; then
+      echo "$session_type" > "${job_state_dir}/type"
+      log_step "Session type: $session_type"
+    fi
     log_ok "merge_job: all branches merged and pushed"
   else
     log_warn "merge_job: some branches failed — check output above"

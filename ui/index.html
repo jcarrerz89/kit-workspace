@@ -40,11 +40,11 @@
           <table class="data-table" id="jobs-table">
             <thead>
               <tr>
-                <th>Job ID</th>
+                <th>Session ID</th>
                 <th>Name</th>
                 <th>Status</th>
+                <th>Type</th>
                 <th>Started</th>
-                <th>Repos</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -108,115 +108,49 @@
       </section>
     </main>
 
-    <!-- New Feature Modal -->
-    <div id="feature-modal" class="modal hidden">
-      <div class="modal-box">
-        <h3>New Feature</h3>
-
-        <div class="field">
-          <label>Project</label>
-          <div id="feature-project-name" class="field-value mono"></div>
-        </div>
-
-        <div class="field">
-          <label for="feature-name">Feature name</label>
-          <input type="text" id="feature-name" placeholder="add-login-page" />
-          <span class="field-hint">Lowercase, hyphen-separated. Branch will be feature/&lt;name&gt;.</span>
-        </div>
-
-        <div class="field">
-          <label for="feature-desc">Description</label>
-          <textarea id="feature-desc" rows="2" placeholder="What should be built?"></textarea>
-        </div>
-
-        <div class="field">
-          <label for="feature-agent-desc">Agent instructions</label>
-          <textarea id="feature-agent-desc" rows="3" placeholder="Implement the login page with email/password form, connect to the /auth/login endpoint…"></textarea>
-          <span class="field-hint">Detailed instructions for the Claude agent.</span>
-        </div>
-
-        <div class="field-row">
-          <div class="field">
-            <label for="feature-role">Agent role</label>
-            <select id="feature-role">
-              <option value="developer">developer</option>
-              <option value="frontend">frontend</option>
-              <option value="backend">backend</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="feature-mode">Mode</label>
-            <select id="feature-mode">
-              <option value="3">3 — Headless</option>
-              <option value="1">1 — Supervised (tmux)</option>
-              <option value="2">2 — Semi-auto (tmux)</option>
-              <option value="4">4 — Agent Teams</option>
-            </select>
-          </div>
-        </div>
-
-        <label class="toggle-label refine-toggle">
-          <input type="checkbox" id="feature-refine" />
-          <span>Refine with AI before running <span class="field-hint">(product-owner agent elaborates the spec)</span></span>
-        </label>
-
-        <div class="modal-actions">
-          <button id="feature-modal-cancel" class="btn">Cancel</button>
-          <button id="feature-modal-confirm" class="btn btn-primary">Start Feature</button>
-        </div>
-        <pre id="feature-output" class="run-output hidden"></pre>
-      </div>
-    </div>
-
-    <!-- App Feature Modal -->
-    <div id="app-feature-modal" class="modal hidden">
+    <!-- Start Session Modal -->
+    <div id="session-modal" class="modal hidden">
       <div class="modal-box modal-box-wide">
-        <h3>New App Feature — <span id="app-feature-app-name"></span></h3>
+        <h3>Start Session</h3>
 
         <div class="field">
-          <label for="app-feature-name">Feature name</label>
-          <input type="text" id="app-feature-name" placeholder="add-login-page" />
-          <span class="field-hint">Branch will be feature/&lt;name&gt; in each selected project.</span>
+          <label>Target</label>
+          <div id="session-target-display" class="field-value session-target"></div>
         </div>
 
         <div class="field">
-          <label for="app-feature-desc">Description</label>
-          <textarea id="app-feature-desc" rows="2" placeholder="What should be built?"></textarea>
+          <label for="session-name">Session name</label>
+          <input type="text" id="session-name" placeholder="fix-login-mobile" />
+          <span class="field-hint">Lowercase, hyphen-separated. Used as branch name.</span>
         </div>
 
         <div class="field">
-          <label>Target projects</label>
-          <div id="app-feature-projects" class="checkbox-group"></div>
-        </div>
-
-        <div class="field">
-          <label for="app-feature-agent-desc">Agent instructions</label>
-          <textarea id="app-feature-agent-desc" rows="3" placeholder="Implement across the selected projects…"></textarea>
-          <span class="field-hint">Detailed instructions sent to agents in each project.</span>
+          <label for="session-desc">What should this session do?</label>
+          <textarea id="session-desc" rows="3" placeholder="Describe the goal — what to investigate, build, or fix. The agent will figure out the rest."></textarea>
         </div>
 
         <div class="field-row">
           <div class="field">
-            <label for="app-feature-mode">Mode</label>
-            <select id="app-feature-mode">
-              <option value="3">3 — Headless</option>
-              <option value="1">1 — Supervised (tmux)</option>
-              <option value="2">2 — Semi-auto (tmux)</option>
-              <option value="4">4 — Agent Teams</option>
+            <label for="session-mode">Mode</label>
+            <select id="session-mode">
+              <option value="3">Headless (fire &amp; forget)</option>
+              <option value="1">Supervised (tmux, watch)</option>
+              <option value="2">Semi-auto (tmux, auto-accept)</option>
+              <option value="4">Agent Teams (parallel)</option>
             </select>
           </div>
         </div>
 
         <label class="toggle-label refine-toggle">
-          <input type="checkbox" id="app-feature-refine" />
-          <span>Refine with AI before running <span class="field-hint">(product-owner agent elaborates the spec)</span></span>
+          <input type="checkbox" id="session-refine" />
+          <span>Refine brief with AI first <span class="field-hint">(product-owner agent elaborates before running)</span></span>
         </label>
 
         <div class="modal-actions">
-          <button id="app-feature-modal-cancel" class="btn">Cancel</button>
-          <button id="app-feature-modal-confirm" class="btn btn-primary">Start Feature</button>
+          <button id="session-modal-cancel" class="btn">Cancel</button>
+          <button id="session-modal-confirm" class="btn btn-primary">Start Session</button>
         </div>
-        <pre id="app-feature-output" class="run-output hidden"></pre>
+        <pre id="session-output" class="run-output hidden"></pre>
       </div>
     </div>
 
