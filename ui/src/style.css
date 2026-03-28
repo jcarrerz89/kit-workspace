@@ -329,6 +329,76 @@ textarea {
 }
 textarea:focus { border-color: var(--accent); }
 
+/* ── Projects — app groups ────────────────────────────────── */
+.subsection-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: 8px 0 4px;
+}
+
+.section-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 16px 0 10px;
+}
+
+#apps-section { margin-bottom: 0; }
+
+.project-in-group td:first-child { padding-left: 20px; color: var(--text-muted); }
+
+/* ── App Feature Modal — wide variant ─────────────────────── */
+.modal-box-wide { max-width: 640px; }
+
+/* ── Checkbox group ───────────────────────────────────────── */
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+}
+
+.checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.checkbox-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ── Refine toggle ────────────────────────────────────────── */
+.refine-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.refine-toggle input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
+.refine-toggle .field-hint {
+  display: inline;
+  margin-left: 4px;
+}
+
 /* ── Scrollbar ────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

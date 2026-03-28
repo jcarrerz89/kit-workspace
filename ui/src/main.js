@@ -125,13 +125,39 @@ async function loadProjects() {
     const raw = await readFile(`${home}/.kit-workspace/workspace.json`)
     const ws = JSON.parse(raw)
     const projects = Object.entries(ws.projects || {})
+    const apps = ws.apps || {}
+
+    // Render app groups
+    const appsSection = document.getElementById('apps-section')
+    const appsBody = document.getElementById('apps-body')
+    const appEntries = Object.entries(apps)
+
+    if (appEntries.length) {
+      appsSection.classList.remove('hidden')
+      appsBody.innerHTML = appEntries.map(([appName, projectList]) => `
+        <tr>
+          <td><strong>${escHtml(appName)}</strong></td>
+          <td class="mono">${projectList.map(p => escHtml(p)).join(', ')}</td>
+          <td>
+            <button class="btn btn-sm btn-primary"
+              onclick="openAppFeatureModal('${escHtml(appName)}', ${JSON.stringify(projectList)})">
+              + App Feature
+            </button>
+          </td>
+        </tr>`).join('')
+    } else {
+      appsSection.classList.add('hidden')
+    }
+
+    // Collect projects that belong to an app group (to mark them)
+    const groupedProjects = new Set(Object.values(apps).flat())
 
     if (!projects.length) {
       tbody.innerHTML = '<tr><td colspan="4" class="empty">No projects registered yet.</td></tr>'
       return
     }
     tbody.innerHTML = projects.map(([name, p]) => `
-      <tr>
+      <tr${groupedProjects.has(name) ? ' class="project-in-group"' : ''}>
         <td><strong>${escHtml(name)}</strong></td>
         <td><span class="badge ${p.driver === 'petfi-kit' ? 'badge-running' : 'badge-unknown'}">${p.driver}</span></td>
         <td class="mono">${escHtml(p.path)}</td>
@@ -229,9 +255,26 @@ function loadSettingsForm() {
 // ── Actions ────────────────────────────────────────────────
 window.mergeJob = async (jobId) => {
   if (!confirm(`Merge job ${jobId} into main?`)) return
+
+  // Show a temporary status in the table row
+  const btn = document.querySelector(`button[onclick="mergeJob('${jobId}')"]`)
+  if (btn) { btn.textContent = 'Merging…'; btn.disabled = true }
+
   const result = await kit('merge', jobId)
-  alert(result.success ? `Merged successfully.` : `Merge failed:\n${result.stderr}`)
-  loadDashboard()
+  const text = (result.stdout + result.stderr).replace(/\x1b\[[0-9;]*m/g, '').trim()
+
+  if (result.success) {
+    loadDashboard()
+  } else {
+    // Re-enable button and show error in a modal-style overlay
+    if (btn) { btn.textContent = 'Merge'; btn.disabled = false }
+    const output = document.getElementById('run-output')
+    const modal  = document.getElementById('run-modal')
+    document.getElementById('job-path-input').value = jobId
+    output.textContent = text || 'Merge failed — no output captured.'
+    output.classList.remove('hidden')
+    modal.classList.remove('hidden')
+  }
 }
 
 window.stopJob = async (jobId) => {
@@ -273,6 +316,7 @@ async function startFeature() {
   const agentDesc  = document.getElementById('feature-agent-desc').value.trim()
   const role       = document.getElementById('feature-role').value
   const mode       = document.getElementById('feature-mode').value
+  const refine     = document.getElementById('feature-refine').checked
 
   if (!name) { document.getElementById('feature-name').focus(); return }
 
@@ -303,13 +347,103 @@ async function startFeature() {
     await writeFile(jobPath, JSON.stringify(job, null, 2))
     output.textContent = `Job saved: ${jobPath}\nStarting…`
 
-    const result = await kit('run', jobPath, '--mode', mode)
+    const runArgs = ['run', jobPath, '--mode', mode]
+    if (refine) runArgs.push('--refine')
+    const result = await kit(...runArgs)
     const text = (result.stdout + result.stderr).replace(/\x1b\[[0-9;]*m/g, '')
     output.textContent = text
 
     if (result.success) {
       setTimeout(() => {
         closeFeatureModal()
+        switchTab('dashboard')
+      }, 1500)
+    }
+  } catch (e) {
+    output.textContent = `Error: ${e}`
+  }
+}
+
+// ── App Feature modal ───────────────────────────────────────
+let _appFeatureName = ''
+let _appFeatureProjects = []
+
+window.openAppFeatureModal = (appName, projects) => {
+  _appFeatureName = appName
+  _appFeatureProjects = projects
+
+  document.getElementById('app-feature-app-name').textContent = appName
+  document.getElementById('app-feature-name').value       = ''
+  document.getElementById('app-feature-desc').value       = ''
+  document.getElementById('app-feature-agent-desc').value = ''
+  document.getElementById('app-feature-refine').checked   = false
+  document.getElementById('app-feature-output').classList.add('hidden')
+  document.getElementById('app-feature-output').textContent = ''
+
+  // Render project checkboxes (all pre-checked)
+  const container = document.getElementById('app-feature-projects')
+  container.innerHTML = projects.map(p => `
+    <label class="checkbox-item">
+      <input type="checkbox" name="app-project" value="${escHtml(p)}" checked />
+      <span>${escHtml(p)}</span>
+    </label>`).join('')
+
+  document.getElementById('app-feature-modal').classList.remove('hidden')
+  setTimeout(() => document.getElementById('app-feature-name').focus(), 50)
+}
+
+function closeAppFeatureModal() {
+  document.getElementById('app-feature-modal').classList.add('hidden')
+}
+
+async function startAppFeature() {
+  const name      = document.getElementById('app-feature-name').value.trim().replace(/\s+/g, '-').toLowerCase()
+  const desc      = document.getElementById('app-feature-desc').value.trim()
+  const agentDesc = document.getElementById('app-feature-agent-desc').value.trim()
+  const mode      = document.getElementById('app-feature-mode').value
+  const refine    = document.getElementById('app-feature-refine').checked
+
+  if (!name) { document.getElementById('app-feature-name').focus(); return }
+
+  // Collect checked projects
+  const checked = [...document.querySelectorAll('input[name="app-project"]:checked')].map(el => el.value)
+  if (!checked.length) { alert('Select at least one project.'); return }
+
+  const output = document.getElementById('app-feature-output')
+  output.classList.remove('hidden')
+  output.textContent = 'Creating job…'
+
+  const jobId = `job-${new Date().toISOString().replace(/[-:T]/g,'').slice(0,15)}`
+  const job = {
+    id:          jobId,
+    name,
+    description: desc,
+    repos: checked.map(project => ({
+      project,
+      agents: [{
+        role:        'developer',
+        branch:      `feature/${name}`,
+        profile:     'generic',
+        description: agentDesc || desc,
+      }]
+    }))
+  }
+
+  try {
+    const home    = await homeDir()
+    const jobPath = `${home}/.kit-workspace/jobs/${name}.json`
+    await writeFile(jobPath, JSON.stringify(job, null, 2))
+    output.textContent = `Job saved: ${jobPath}\nStarting…`
+
+    const runArgs = ['run', jobPath, '--mode', mode]
+    if (refine) runArgs.push('--refine')
+    const result = await kit(...runArgs)
+    const text = (result.stdout + result.stderr).replace(/\x1b\[[0-9;]*m/g, '')
+    output.textContent = text
+
+    if (result.success) {
+      setTimeout(() => {
+        closeAppFeatureModal()
         switchTab('dashboard')
       }, 1500)
     }
@@ -368,6 +502,13 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('feature-modal-confirm').addEventListener('click', startFeature)
   document.getElementById('feature-modal').addEventListener('click', e => {
     if (e.target === e.currentTarget) closeFeatureModal()
+  })
+
+  // App Feature modal
+  document.getElementById('app-feature-modal-cancel').addEventListener('click', closeAppFeatureModal)
+  document.getElementById('app-feature-modal-confirm').addEventListener('click', startAppFeature)
+  document.getElementById('app-feature-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeAppFeatureModal()
   })
 
   // Run job modal

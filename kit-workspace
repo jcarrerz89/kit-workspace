@@ -21,6 +21,7 @@ source "${KWS_DIR}/lib/checkpoint.sh"
 source "${KWS_DIR}/lib/notify.sh"
 source "${KWS_DIR}/lib/safety.sh"
 source "${KWS_DIR}/lib/merge.sh"
+source "${KWS_DIR}/lib/refine.sh"
 
 # Export key vars so sourced drivers/lib can reference them
 export KWS_DIR KWS_HOME
@@ -214,6 +215,8 @@ cmd_run() {
     exit 1
   fi
 
+  local refine_first="false"
+
   shift
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -223,6 +226,10 @@ cmd_run() {
         ;;
       --dry-run)
         dry_run="true"
+        shift
+        ;;
+      --refine)
+        refine_first="true"
         shift
         ;;
       *)
@@ -248,6 +255,18 @@ cmd_run() {
   if ! jq empty "$job_path" 2>/dev/null; then
     log_error "Invalid JSON: $job_path"
     exit 1
+  fi
+
+  # Refinement phase: run planner agent before implementation
+  if [ "$refine_first" = "true" ]; then
+    local refined_path="${job_path%.json}-refined.json"
+    log_info "Refinement phase: elaborating job spec with planner agent…"
+    if refine_job "$job_path" "$refined_path"; then
+      job_path="$refined_path"
+      log_ok "Using refined spec: $job_path"
+    else
+      log_warn "Refinement failed — proceeding with original spec"
+    fi
   fi
 
   # Export mode for drivers
@@ -561,6 +580,63 @@ cmd_doctor() {
 }
 
 # =============================================================================
+# Subcommand: refine <job.json> [output.json]
+# =============================================================================
+cmd_refine() {
+  local job_path="${1:-}"
+  if [ -z "$job_path" ]; then
+    log_error "Usage: kit-workspace refine <job.json> [output.json]"
+    exit 1
+  fi
+
+  # Resolve path (same logic as cmd_run)
+  if [ ! -f "$job_path" ]; then
+    if [ -f "${KWS_HOME}/jobs/${job_path}" ]; then
+      job_path="${KWS_HOME}/jobs/${job_path}"
+    elif [ -f "${KWS_HOME}/jobs/${job_path}.json" ]; then
+      job_path="${KWS_HOME}/jobs/${job_path}.json"
+    else
+      log_error "job.json not found: $job_path"
+      exit 1
+    fi
+  fi
+
+  local out_path="${2:-${job_path%.json}-refined.json}"
+  refine_job "$job_path" "$out_path"
+  echo ""
+  log_info "Review: $out_path"
+  log_info "Run:    kit-workspace run $out_path"
+  echo ""
+}
+
+# =============================================================================
+# Subcommand: add-app <name> <project> [project...]
+# =============================================================================
+cmd_add_app() {
+  local app_name="${1:-}"
+  if [ -z "$app_name" ]; then
+    log_error "Usage: kit-workspace add-app <app-name> <project> [project...]"
+    exit 1
+  fi
+  shift
+  if [ $# -eq 0 ]; then
+    log_error "Usage: kit-workspace add-app <app-name> <project> [project...]"
+    exit 1
+  fi
+  workspace_add_app "$app_name" "$@"
+}
+
+# =============================================================================
+# Subcommand: list-apps
+# =============================================================================
+cmd_list_apps() {
+  echo ""
+  echo -e "${BOLD}App groups:${NC}"
+  workspace_list_apps
+  echo ""
+}
+
+# =============================================================================
 # Subcommand: history
 # =============================================================================
 cmd_history() {
@@ -596,17 +672,28 @@ ${BOLD}COMMANDS${NC}
   list-projects
       List all registered projects with their path and driver.
 
+  add-app <name> <project> [project...]
+      Group projects under a named app (e.g. nogal = nomades-webapp + nomades-bff).
+
+  list-apps
+      List all app groups.
+
   new [--name <name>] [--from-template]
       Interactive wizard to create a new job.json.
       --from-template  Copy the single-repo template instead of wizard.
 
-  run <job.json> [--mode 1|2|3|4] [--dry-run]
+  refine <job.json> [output.json]
+      Run a planner agent (product-owner/planner/architect) to elaborate the job
+      spec before implementation. Outputs job-refined.json for review.
+
+  run <job.json> [--mode 1|2|3|4] [--dry-run] [--refine]
       Execute a job. job.json can be a path or a name in ~/.kit-workspace/jobs/.
       --mode 1   Supervised (tmux, you watch)
       --mode 2   Semi-auto (tmux, auto-accept)
       --mode 3   Fire & Forget (headless)
       --mode 4   Agent Teams (headless, parallel)
       --dry-run  Print the execution plan without running.
+      --refine   Refine the spec with a planner agent before running.
 
   status [<job-id>]
       Without job-id: one-liner status for all jobs.
@@ -669,7 +756,10 @@ main() {
     init)            cmd_init "$@" ;;
     add-project)     cmd_add_project "$@" ;;
     list-projects)   cmd_list_projects "$@" ;;
+    add-app)         cmd_add_app "$@" ;;
+    list-apps)       cmd_list_apps "$@" ;;
     new)             cmd_new "$@" ;;
+    refine)          cmd_refine "$@" ;;
     run)             cmd_run "$@" ;;
     status)          cmd_status "$@" ;;
     dashboard)       cmd_dashboard "$@" ;;

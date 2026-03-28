@@ -67,7 +67,11 @@ generic_run() {
   fi
 
   # Initialize checkpoint for this repo
-  checkpoint_init "$state_dir" "$job_id" "$project_name"
+  # checkpoint_init sets CHECKPOINT_DIR = $project_dir/.kit-ws/state
+  # We then override it to point at the job-scoped state_dir
+  checkpoint_init "$project_dir"
+  CHECKPOINT_DIR="$state_dir"
+  mkdir -p "$CHECKPOINT_DIR"
 
   # Process each agent
   local agent_idx=0
@@ -84,7 +88,7 @@ generic_run() {
     export PROJECT_DIR="$project_dir"
     worktree_create "$branch" || {
       log_error "generic_run: failed to create worktree for branch $branch"
-      checkpoint_fail "$state_dir" "$role" "worktree creation failed"
+      checkpoint_agent_failed "$job_id" "$role" "worktree creation failed"
       continue
     }
     local worktree_path
@@ -134,12 +138,47 @@ generic_status() {
     return 0
   fi
 
-  checkpoint_status "$state_dir" "$job_id" "$project_name"
+  # Return basic status JSON from state_dir
+  local status="unknown"
+  [ -f "${state_dir}/current.json" ] && status=$(jq -r '.status // "unknown"' "${state_dir}/current.json" 2>/dev/null || echo "unknown")
+  echo "{\"project\": \"${project_name}\", \"status\": \"${status}\", \"agents\": []}"
 }
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+# Discover available Claude sub-agents for a project directory.
+# Checks project/.claude/agents/ and parent/.claude/agents/ (for nested repos).
+# Returns formatted text listing @agent-name: description, one per line.
+_generic_discover_agents() {
+  local project_dir="$1"
+  local result=""
+
+  local parent_dir
+  parent_dir="$(dirname "$project_dir")"
+
+  local agent_dirs=()
+  [ -d "${project_dir}/.claude/agents" ] && agent_dirs+=("${project_dir}/.claude/agents")
+  [ -d "${parent_dir}/.claude/agents"  ] && agent_dirs+=("${parent_dir}/.claude/agents")
+
+  for agent_dir in "${agent_dirs[@]}"; do
+    for f in "$agent_dir"/*.md; do
+      [ -f "$f" ] || continue
+      local agent_name
+      agent_name=$(basename "$f" .md)
+      # Prefer frontmatter description:, else first non-blank non-header line
+      local desc
+      desc=$(grep -m1 '^description:' "$f" 2>/dev/null | sed 's/^description:[[:space:]]*//')
+      if [ -z "$desc" ]; then
+        desc=$(grep -m1 '^[^#[:space:]-]' "$f" 2>/dev/null | cut -c1-100 || true)
+      fi
+      result+="  - @${agent_name}${desc:+: ${desc}}\n"
+    done
+  done
+
+  printf '%b' "$result"
+}
 
 # Build prompt string for an agent
 _generic_build_prompt() {
@@ -159,7 +198,28 @@ _generic_build_prompt() {
   local raw_boundaries
   raw_boundaries=$(echo "$agent_json" | jq -r '.boundaries // [] | .[]' 2>/dev/null || true)
   if [ -n "$raw_boundaries" ]; then
-    boundaries="File scope (stay within these paths only): ${raw_boundaries}"
+    boundaries="File scope (stay within these paths only):
+${raw_boundaries}"
+  fi
+
+  # Collect acceptance criteria if present
+  local criteria=""
+  local raw_criteria
+  raw_criteria=$(echo "$agent_json" | jq -r '.acceptance_criteria // [] | .[]' 2>/dev/null || true)
+  if [ -n "$raw_criteria" ]; then
+    criteria="Acceptance criteria (all must be met before you are done):
+${raw_criteria}"
+  fi
+
+  # Discover sub-agents available in this project
+  local agents_section=""
+  local discovered
+  discovered=$(_generic_discover_agents "$project_dir")
+  if [ -n "$discovered" ]; then
+    agents_section="Available sub-agents — delegate to them by calling @agent-name in your prompt:
+${discovered}
+Use these for specialised work: e.g. @product-owner for requirements, @ux for UI decisions,
+@webapp for frontend implementation, @devops for infrastructure changes."
   fi
 
   # Build prompt
@@ -175,13 +235,18 @@ ${description}
 
 ${boundaries:+${boundaries}
 
+}${criteria:+${criteria}
+
+}${agents_section:+${agents_section}
+
 }Instructions:
-1. Read the project CLAUDE.md (if present) for project-specific context.
-2. Analyze the current state of the code within your scope.
-3. Execute the task described above.
-4. Make descriptive commits with the prefix [${role}].
-5. Do NOT touch files or branches outside your scope.
-6. When done, output a brief summary of what was changed.
+1. Read the project CLAUDE.md (if present) for project-specific context and constraints.
+2. Use the sub-agents listed above where their expertise applies — delegate, don't do everything alone.
+3. Analyse the current state of the code within your scope.
+4. Execute the task described above.
+5. Make descriptive commits with the prefix [${role}].
+6. Do NOT touch files or branches outside your scope.
+7. When done, output a brief summary of what was changed and which sub-agents were used.
 EOF
 }
 
@@ -212,7 +277,7 @@ _generic_launch_tmux() {
       log_warn "tmux session '$session_name' may already exist; attaching"
     }
 
-  checkpoint_agent_start "$state_dir" "$role" "tmux:${session_name}" ""
+  checkpoint_agent_started "$job_id" "$role"
   log_step "Launched tmux session: $session_name (Mode $mode)"
 }
 
@@ -238,6 +303,6 @@ _generic_launch_headless() {
   local pid=$!
   echo "$pid" >"$pid_file"
 
-  checkpoint_agent_start "$state_dir" "$role" "bg:${pid}" "$pid"
+  checkpoint_agent_started "$job_id" "$role"
   log_step "Launched headless agent [$role] PID=$pid → $log_file"
 }

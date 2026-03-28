@@ -34,8 +34,8 @@ worktree_create() {
   fi
 
   # Create branch if needed
-  if ! git show-ref --verify --quiet "refs/heads/$branch" 2>/dev/null; then
-    if ! git branch "$branch" 2>/dev/null; then
+  if ! git -C "$PROJECT_DIR" show-ref --verify --quiet "refs/heads/$branch" 2>/dev/null; then
+    if ! git -C "$PROJECT_DIR" branch "$branch" 2>/dev/null; then
       log_error "Could not create branch: $branch"
       return 1
     fi
@@ -47,12 +47,12 @@ worktree_create() {
   }
 
   local wt_output
-  wt_output=$(git worktree add "$worktree_path" "$branch" 2>&1)
+  wt_output=$(git -C "$PROJECT_DIR" worktree add "$worktree_path" "$branch" 2>&1)
   local wt_exit=$?
 
   if [ $wt_exit -ne 0 ]; then
     # Check if it failed because it already exists (not a real error)
-    if [ -d "$worktree_path" ] && git worktree list 2>/dev/null | grep -q "$worktree_path"; then
+    if [ -d "$worktree_path" ] && git -C "$PROJECT_DIR" worktree list 2>/dev/null | grep -q "$worktree_path"; then
       log_step "Worktree reused: $branch"
       worktree_sync_claude "$worktree_path"
       return 0
@@ -112,6 +112,29 @@ worktree_sync_claude() {
   if [ -d "$PROJECT_DIR/.kit-ws" ]; then
     cp -r "$PROJECT_DIR/.kit-ws" "$worktree_path/"
   fi
+
+  # Copy project-local agents so Claude can invoke @agent-name sub-agents in the worktree
+  if [ -d "${PROJECT_DIR}/.claude/agents" ]; then
+    mkdir -p "$worktree_path/.claude/agents"
+    for f in "${PROJECT_DIR}/.claude/agents"/*.md; do
+      [ -f "$f" ] || continue
+      cp "$f" "$worktree_path/.claude/agents/"
+    done
+  fi
+
+  # Also copy parent-level agents (e.g. nogal parent when project is nomades-webapp)
+  # Parent agents fill gaps — never overwrite project-level agents
+  local parent_agent_dir
+  parent_agent_dir="$(dirname "$PROJECT_DIR")/.claude/agents"
+  if [ -d "$parent_agent_dir" ]; then
+    mkdir -p "$worktree_path/.claude/agents"
+    for f in "$parent_agent_dir"/*.md; do
+      [ -f "$f" ] || continue
+      local fname
+      fname=$(basename "$f")
+      [ -f "$worktree_path/.claude/agents/$fname" ] || cp "$f" "$worktree_path/.claude/agents/$fname"
+    done
+  fi
 }
 
 # Remove a worktree
@@ -121,10 +144,10 @@ worktree_remove() {
   local worktree_path="$WORKTREE_ROOT/$branch"
 
   if [ -d "$worktree_path" ]; then
-    if ! git worktree remove "$worktree_path" --force 2>/dev/null; then
+    if ! git -C "$PROJECT_DIR" worktree remove "$worktree_path" --force 2>/dev/null; then
       log_warn "Could not cleanly remove worktree: $branch — attempting rm"
       rm -rf "$worktree_path"
-      git worktree prune 2>/dev/null
+      git -C "$PROJECT_DIR" worktree prune 2>/dev/null
     fi
     log_step "Worktree removed: $branch"
   fi

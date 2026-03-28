@@ -177,6 +177,69 @@ workspace_add_project() {
 }
 
 # ---------------------------------------------------------------------------
+# workspace_add_app — Group projects under a named app
+# Usage: workspace_add_app "nogal" "nomades-webapp" "nomades-bff"
+# ---------------------------------------------------------------------------
+workspace_add_app() {
+  local app_name="${1:-}"
+  shift
+  local projects=("$@")
+
+  if [ -z "$app_name" ] || [ ${#projects[@]} -eq 0 ]; then
+    log_error "Usage: workspace_add_app <app-name> <project> [project...]"
+    return 1
+  fi
+
+  workspace_load || {
+    log_error "Cannot add app: workspace not initialized. Run: kit-workspace init"
+    return 1
+  }
+
+  local tmp="${KWS_CONFIG}.tmp.$$"
+  local projects_json
+  projects_json=$(printf '%s\n' "${projects[@]}" | jq -R . | jq -s .)
+
+  if jq \
+    --arg a "$app_name" \
+    --argjson p "$projects_json" \
+    '.apps[$a] = $p' \
+    "$KWS_CONFIG" > "$tmp" \
+    && [ -s "$tmp" ] \
+    && jq empty "$tmp" 2>/dev/null; then
+    mv "$tmp" "$KWS_CONFIG"
+    log_ok "App '$app_name' → ${projects[*]}"
+  else
+    rm -f "$tmp"
+    log_error "Failed to add app '$app_name'"
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# workspace_get_app_projects — Return project names for an app (one per line)
+# Usage: workspace_get_app_projects "nogal"
+# ---------------------------------------------------------------------------
+workspace_get_app_projects() {
+  local app_name="$1"
+  workspace_load || return 1
+  jq -r --arg a "$app_name" '.apps[$a]? // [] | .[]' "$KWS_CONFIG" 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# workspace_list_apps — Print all app groups (one per line: "name: proj1, proj2")
+# ---------------------------------------------------------------------------
+workspace_list_apps() {
+  workspace_load || return 1
+  local app_count
+  app_count=$(jq '.apps | length' "$KWS_CONFIG" 2>/dev/null || echo 0)
+  if [ "$app_count" -eq 0 ]; then
+    log_info "No apps registered yet. Use: kit-workspace add-app <name> <project>..."
+    return 0
+  fi
+  jq -r '.apps | to_entries[] | "\(.key): \(.value | join(", "))"' "$KWS_CONFIG" 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
 # workspace_summary — Print workspace summary (for status commands)
 # ---------------------------------------------------------------------------
 workspace_summary() {

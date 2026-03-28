@@ -56,7 +56,23 @@
       <!-- Projects -->
       <section id="tab-projects" class="tab-content">
         <div class="section-header">
-          <h2>Registered Projects</h2>
+          <h2>Projects</h2>
+        </div>
+        <!-- App groups -->
+        <div id="apps-section" class="hidden">
+          <div class="subsection-label">App groups</div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>App</th>
+                <th>Projects</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="apps-body"></tbody>
+          </table>
+          <div class="section-divider"></div>
+          <div class="subsection-label">Standalone projects</div>
         </div>
         <div id="projects-table-wrap">
           <table class="data-table">
@@ -165,11 +181,68 @@
           </div>
         </div>
 
+        <label class="toggle-label refine-toggle">
+          <input type="checkbox" id="feature-refine" />
+          <span>Refine with AI before running <span class="field-hint">(product-owner agent elaborates the spec)</span></span>
+        </label>
+
         <div class="modal-actions">
           <button id="feature-modal-cancel" class="btn">Cancel</button>
           <button id="feature-modal-confirm" class="btn btn-primary">Start Feature</button>
         </div>
         <pre id="feature-output" class="run-output hidden"></pre>
+      </div>
+    </div>
+
+    <!-- App Feature Modal -->
+    <div id="app-feature-modal" class="modal hidden">
+      <div class="modal-box modal-box-wide">
+        <h3>New App Feature — <span id="app-feature-app-name"></span></h3>
+
+        <div class="field">
+          <label for="app-feature-name">Feature name</label>
+          <input type="text" id="app-feature-name" placeholder="add-login-page" />
+          <span class="field-hint">Branch will be feature/&lt;name&gt; in each selected project.</span>
+        </div>
+
+        <div class="field">
+          <label for="app-feature-desc">Description</label>
+          <textarea id="app-feature-desc" rows="2" placeholder="What should be built?"></textarea>
+        </div>
+
+        <div class="field">
+          <label>Target projects</label>
+          <div id="app-feature-projects" class="checkbox-group"></div>
+        </div>
+
+        <div class="field">
+          <label for="app-feature-agent-desc">Agent instructions</label>
+          <textarea id="app-feature-agent-desc" rows="3" placeholder="Implement across the selected projects…"></textarea>
+          <span class="field-hint">Detailed instructions sent to agents in each project.</span>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="app-feature-mode">Mode</label>
+            <select id="app-feature-mode">
+              <option value="3">3 — Headless</option>
+              <option value="1">1 — Supervised (tmux)</option>
+              <option value="2">2 — Semi-auto (tmux)</option>
+              <option value="4">4 — Agent Teams</option>
+            </select>
+          </div>
+        </div>
+
+        <label class="toggle-label refine-toggle">
+          <input type="checkbox" id="app-feature-refine" />
+          <span>Refine with AI before running <span class="field-hint">(product-owner agent elaborates the spec)</span></span>
+        </label>
+
+        <div class="modal-actions">
+          <button id="app-feature-modal-cancel" class="btn">Cancel</button>
+          <button id="app-feature-modal-confirm" class="btn btn-primary">Start Feature</button>
+        </div>
+        <pre id="app-feature-output" class="run-output hidden"></pre>
       </div>
     </div>
 
