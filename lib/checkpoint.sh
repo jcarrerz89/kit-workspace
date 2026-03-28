@@ -28,8 +28,6 @@
 
 set -euo pipefail
 
-: "${PROJECT_DIR:?PROJECT_DIR not set — source from kit-workspace}"
-
 CHECKPOINT_DIR=""
 
 # ---------------------------------------------------------------------------

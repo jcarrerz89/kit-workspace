@@ -81,12 +81,14 @@ generic_run() {
     log_step "Agent [$role] branch=$branch profile=$profile"
 
     # 1. Create worktree for this agent
-    local worktree_path
-    worktree_path=$(worktree_create "$project_dir" "$branch") || {
+    export PROJECT_DIR="$project_dir"
+    worktree_create "$branch" || {
       log_error "generic_run: failed to create worktree for branch $branch"
       checkpoint_fail "$state_dir" "$role" "worktree creation failed"
       continue
     }
+    local worktree_path
+    worktree_path=$(worktree_path "$branch")
 
     # 2. Build the agent prompt
     local prompt

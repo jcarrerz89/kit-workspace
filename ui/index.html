@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>kit-workspace</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <div class="brand">
+        <span class="brand-icon">⬡</span>
+        <span class="brand-name">kit-workspace</span>
+      </div>
+      <nav>
+        <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+        <button class="tab-btn" data-tab="projects">Projects</button>
+        <button class="tab-btn" data-tab="history">History</button>
+        <button class="tab-btn" data-tab="logs">Logs</button>
+        <button class="tab-btn" data-tab="settings">Settings</button>
+      </nav>
+      <div class="header-actions">
+        <button id="refresh-btn" class="icon-btn" title="Refresh">↺</button>
+      </div>
+    </header>
+
+    <main>
+      <!-- Dashboard -->
+      <section id="tab-dashboard" class="tab-content active">
+        <div class="section-header">
+          <h2>Jobs</h2>
+          <div class="actions">
+            <button id="run-job-btn" class="btn btn-primary">+ Run Job</button>
+          </div>
+        </div>
+        <div id="jobs-table-wrap">
+          <table class="data-table" id="jobs-table">
+            <thead>
+              <tr>
+                <th>Job ID</th>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Started</th>
+                <th>Repos</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="jobs-body">
+              <tr><td colspan="6" class="empty">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Projects -->
+      <section id="tab-projects" class="tab-content">
+        <div class="section-header">
+          <h2>Registered Projects</h2>
+        </div>
+        <div id="projects-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Driver</th>
+                <th>Path</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="projects-body">
+              <tr><td colspan="4" class="empty">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- History -->
+      <section id="tab-history" class="tab-content">
+        <div class="section-header">
+          <h2>Feature History</h2>
+        </div>
+        <div id="history-list"></div>
+      </section>
+
+      <!-- Logs -->
+      <section id="tab-logs" class="tab-content">
+        <div class="section-header">
+          <h2>Logs</h2>
+          <div class="log-controls">
+            <select id="log-job-select"><option value="">— select job —</option></select>
+            <label class="toggle-label">
+              <input type="checkbox" id="log-follow" />
+              <span>Auto-refresh</span>
+            </label>
+          </div>
+        </div>
+        <pre id="log-output" class="log-viewer">Select a job to view logs.</pre>
+      </section>
+
+      <!-- Settings -->
+      <section id="tab-settings" class="tab-content">
+        <div class="section-header"><h2>Settings</h2></div>
+        <div class="settings-form">
+          <div class="field">
+            <label for="kws-path">kit-workspace script path</label>
+            <input type="text" id="kws-path" placeholder="/path/to/kit-workspace/kit-workspace" />
+            <span class="field-hint">Absolute path to the kit-workspace shell script.</span>
+          </div>
+          <div class="field">
+            <label for="kws-dir">kit-workspace repo directory</label>
+            <input type="text" id="kws-dir" placeholder="/path/to/kit-workspace" />
+            <span class="field-hint">Used to locate history.json.</span>
+          </div>
+          <button id="save-settings-btn" class="btn btn-primary">Save</button>
+          <span id="settings-status" class="settings-status"></span>
+        </div>
+      </section>
+    </main>
+
+    <!-- New Feature Modal -->
+    <div id="feature-modal" class="modal hidden">
+      <div class="modal-box">
+        <h3>New Feature</h3>
+
+        <div class="field">
+          <label>Project</label>
+          <div id="feature-project-name" class="field-value mono"></div>
+        </div>
+
+        <div class="field">
+          <label for="feature-name">Feature name</label>
+          <input type="text" id="feature-name" placeholder="add-login-page" />
+          <span class="field-hint">Lowercase, hyphen-separated. Branch will be feature/&lt;name&gt;.</span>
+        </div>
+
+        <div class="field">
+          <label for="feature-desc">Description</label>
+          <textarea id="feature-desc" rows="2" placeholder="What should be built?"></textarea>
+        </div>
+
+        <div class="field">
+          <label for="feature-agent-desc">Agent instructions</label>
+          <textarea id="feature-agent-desc" rows="3" placeholder="Implement the login page with email/password form, connect to the /auth/login endpoint…"></textarea>
+          <span class="field-hint">Detailed instructions for the Claude agent.</span>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="feature-role">Agent role</label>
+            <select id="feature-role">
+              <option value="developer">developer</option>
+              <option value="frontend">frontend</option>
+              <option value="backend">backend</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="feature-mode">Mode</label>
+            <select id="feature-mode">
+              <option value="3">3 — Headless</option>
+              <option value="1">1 — Supervised (tmux)</option>
+              <option value="2">2 — Semi-auto (tmux)</option>
+              <option value="4">4 — Agent Teams</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button id="feature-modal-cancel" class="btn">Cancel</button>
+          <button id="feature-modal-confirm" class="btn btn-primary">Start Feature</button>
+        </div>
+        <pre id="feature-output" class="run-output hidden"></pre>
+      </div>
+    </div>
+
+    <!-- Run Job Modal -->
+    <div id="run-modal" class="modal hidden">
+      <div class="modal-box">
+        <h3>Run a Job</h3>
+        <div class="field">
+          <label for="job-path-input">Job JSON path</label>
+          <input type="text" id="job-path-input" placeholder="~/.kit-workspace/jobs/my-feature.json" />
+        </div>
+        <div class="field">
+          <label for="job-mode-select">Mode</label>
+          <select id="job-mode-select">
+            <option value="3">3 — Headless (fire &amp; forget)</option>
+            <option value="1">1 — Supervised (tmux)</option>
+            <option value="2">2 — Semi-auto (tmux)</option>
+            <option value="4">4 — Agent Teams (parallel)</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button id="run-modal-cancel" class="btn">Cancel</button>
+          <button id="run-modal-confirm" class="btn btn-primary">Run</button>
+        </div>
+        <pre id="run-output" class="run-output hidden"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

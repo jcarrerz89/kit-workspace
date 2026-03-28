@@ -20,6 +20,7 @@ source "${KWS_DIR}/lib/worktree.sh"
 source "${KWS_DIR}/lib/checkpoint.sh"
 source "${KWS_DIR}/lib/notify.sh"
 source "${KWS_DIR}/lib/safety.sh"
+source "${KWS_DIR}/lib/merge.sh"
 
 # Export key vars so sourced drivers/lib can reference them
 export KWS_DIR KWS_HOME
@@ -343,6 +344,20 @@ cmd_logs() {
 }
 
 # =============================================================================
+# Subcommand: merge <job-id>
+# =============================================================================
+cmd_merge() {
+  local job_id="${1:-}"
+
+  if [ -z "$job_id" ]; then
+    log_error "Usage: kit-workspace merge <job-id>"
+    exit 1
+  fi
+
+  merge_job "$job_id"
+}
+
+# =============================================================================
 # Subcommand: stop <job-id>
 # =============================================================================
 cmd_stop() {
@@ -546,6 +561,13 @@ cmd_doctor() {
 }
 
 # =============================================================================
+# Subcommand: history
+# =============================================================================
+cmd_history() {
+  history_list
+}
+
+# =============================================================================
 # Subcommand: version
 # =============================================================================
 cmd_version() {
@@ -597,6 +619,14 @@ ${BOLD}COMMANDS${NC}
       Tail log output for a job. --role targets a specific agent log.
       --follow  Stream updates (tail -f).
 
+  merge <job-id>
+      Rebase each feature branch onto main, merge, push, and remove the worktree.
+      Conflicts are resolved automatically by a Claude agent.
+      Records the job in history.json and commits it.
+
+  history
+      List all merged features from history.json.
+
   stop <job-id>
       Send SIGTERM to all agent processes and clean up worktrees.
 
@@ -644,6 +674,8 @@ main() {
     status)          cmd_status "$@" ;;
     dashboard)       cmd_dashboard "$@" ;;
     logs)            cmd_logs "$@" ;;
+    merge)           cmd_merge "$@" ;;
+    history)         cmd_history "$@" ;;
     stop)            cmd_stop "$@" ;;
     clean)           cmd_clean "$@" ;;
     doctor)          cmd_doctor "$@" ;;

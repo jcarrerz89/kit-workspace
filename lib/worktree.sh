@@ -3,12 +3,17 @@
 
 set -euo pipefail
 
-: "${PROJECT_DIR:?PROJECT_DIR not set — source from kit-workspace}"
 : "${KWS_DIR:?KWS_DIR not set — source from kit-workspace}"
-WORKTREE_ROOT="${WORKTREE_ROOT:-$(dirname "$PROJECT_DIR")/kit-worktrees}"
+
+# Lazily validate PROJECT_DIR and derive WORKTREE_ROOT — called at the top of each worktree function
+_worktree_ensure_env() {
+  : "${PROJECT_DIR:?PROJECT_DIR not set — must be set before calling worktree functions}"
+  WORKTREE_ROOT="${WORKTREE_ROOT:-$(dirname "$PROJECT_DIR")/kit-worktrees}"
+}
 
 # Create a worktree for a branch
 worktree_create() {
+  _worktree_ensure_env
   local branch="$1"
   local worktree_path="$WORKTREE_ROOT/$branch"
 
@@ -65,6 +70,7 @@ worktree_create() {
 
 # Copy .claude/ (settings, skills, commands) from kit-workspace install dir to worktree
 worktree_sync_claude() {
+  _worktree_ensure_env
   local worktree_path="$1"
   local source_claude="$KWS_DIR/.claude"
 
@@ -110,6 +116,7 @@ worktree_sync_claude() {
 
 # Remove a worktree
 worktree_remove() {
+  _worktree_ensure_env
   local branch="$1"
   local worktree_path="$WORKTREE_ROOT/$branch"
 
@@ -125,12 +132,14 @@ worktree_remove() {
 
 # Get worktree path for a branch
 worktree_path() {
+  _worktree_ensure_env
   local branch="$1"
   echo "$WORKTREE_ROOT/$branch"
 }
 
 # Create all worktrees for a task
 worktrees_setup() {
+  _worktree_ensure_env
   local task_json="$1"
 
   log_info "Setting up worktrees..."

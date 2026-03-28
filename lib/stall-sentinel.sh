@@ -18,8 +18,6 @@
 #
 # =============================================================================
 
-: "${PROJECT_DIR:?PROJECT_DIR not set — source from kit-workspace}"
-
 # Default config (overridable via kit-workspace.config.json)
 SENTINEL_WINDOW_SIZE="${SENTINEL_WINDOW_SIZE:-3}"      # Compare last N error snapshots
 SENTINEL_SIMILARITY_THRESHOLD="${SENTINEL_SIMILARITY_THRESHOLD:-70}"  # % similarity to flag as stuck
