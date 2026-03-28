@@ -112,17 +112,25 @@ _merge_branch() {
   local has_remote=true
   git -C "$project_dir" remote 2>/dev/null | grep -q . || has_remote=false
 
-  if [ "$has_remote" = "true" ]; then
-    if ! (cd "$worktree_path" && git rebase origin/main 2>&1); then
+  # Determine the rebase target: prefer origin/main, fall back to local main
+  local rebase_target="main"
+  if [ "$has_remote" = "true" ] && git -C "$project_dir" rev-parse origin/main &>/dev/null 2>&1; then
+    rebase_target="origin/main"
+  fi
+
+  log_step "  [$project_name] rebasing $branch onto $rebase_target..."
+  if ! (cd "$worktree_path" && git rebase "$rebase_target" 2>&1); then
+    # Check if this is a real conflict vs a rebase-state issue
+    if [ -d "${worktree_path}/.git/rebase-merge" ] || [ -d "${worktree_path}/.git/rebase-apply" ]; then
       log_warn "  [$project_name] rebase has conflicts — launching agent to resolve"
       _resolve_conflicts_with_agent "$worktree_path" "$project_name" "$branch" "$job_id" || {
         log_error "  [$project_name] agent could not resolve conflicts — aborting merge for this branch"
         (cd "$worktree_path" && git rebase --abort 2>/dev/null || true)
         return 1
       }
+    else
+      log_warn "  [$project_name] rebase failed (non-conflict) — attempting merge without rebase"
     fi
-  else
-    log_step "  [$project_name] no remote — skipping rebase"
   fi
 
   # -------------------------------------------------------------------------
@@ -324,7 +332,7 @@ history_list() {
   echo "kit-workspace — Feature History"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-  jq -r '.[] | reverse | "
+  jq -r 'reverse | .[] | "
 \(.merged_at | .[0:10])  \(.name)
   \(.description)
   Job: \(.id)

@@ -146,10 +146,12 @@ notify_agent_failure() {
   _notify_send "$title" "$message" "true"
   _notify_webhook "$title" "$message"
 
-  # Also log to summary (find the actual summary log file, don't use glob in redirect)
-  local summary_log
-  summary_log=$(ls -1t "$STATE_DIR/logs/"*_summary.log 2>/dev/null | head -1)
-  [ -n "$summary_log" ] && echo "$(date +%Y-%m-%dT%H:%M:%S) NOTIFY: $role failure notification sent" >> "$summary_log" 2>/dev/null || true
+  # Also log to summary if STATE_DIR is available
+  if [ -n "${STATE_DIR:-}" ]; then
+    local summary_log
+    summary_log=$(ls -1t "$STATE_DIR/logs/"*_summary.log 2>/dev/null | head -1)
+    [ -n "$summary_log" ] && echo "$(date +%Y-%m-%dT%H:%M:%S) NOTIFY: $role failure notification sent" >> "$summary_log" 2>/dev/null || true
+  fi
 }
 
 # ---------------------------------------------------------------------------

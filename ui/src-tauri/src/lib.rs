@@ -9,14 +9,28 @@ pub struct CommandResult {
 }
 
 /// Run the kit-workspace bash script with the given args.
-/// On Windows, executes via bash (WSL/Git Bash must be on PATH).
+/// Injects a rich PATH so homebrew tools (jq, git, tmux) are found
+/// when the app is launched as a macOS .app bundle.
 #[tauri::command]
 fn run_kit_command(kws_path: String, args: Vec<String>) -> CommandResult {
-    #[cfg(target_os = "windows")]
-    let result = Command::new("bash").arg(&kws_path).args(&args).output();
+    // macOS .app bundles inherit a stripped PATH — augment it with
+    // common locations for homebrew, nix, and system tools.
+    let rich_path = [
+        "/opt/homebrew/bin",   // Apple Silicon homebrew
+        "/usr/local/bin",      // Intel homebrew / misc
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
+        "/opt/homebrew/sbin",
+    ]
+    .join(":");
 
-    #[cfg(not(target_os = "windows"))]
-    let result = Command::new("bash").arg(&kws_path).args(&args).output();
+    let result = Command::new("bash")
+        .arg(&kws_path)
+        .args(&args)
+        .env("PATH", &rich_path)
+        .output();
 
     match result {
         Ok(out) => CommandResult {
@@ -26,7 +40,7 @@ fn run_kit_command(kws_path: String, args: Vec<String>) -> CommandResult {
         },
         Err(e) => CommandResult {
             stdout:  String::new(),
-            stderr:  e.to_string(),
+            stderr:  format!("Failed to launch bash: {}", e),
             success: false,
         },
     }
