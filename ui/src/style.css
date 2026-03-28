@@ -329,14 +329,126 @@ textarea {
 }
 textarea:focus { border-color: var(--accent); }
 
-/* ── Projects — app groups ────────────────────────────────── */
-.subsection-label {
+/* ── Projects tree ────────────────────────────────────────── */
+#projects-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+/* App group card */
+.app-group {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.app-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-group-icon {
+  color: var(--accent);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.app-group-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 8px;
+}
+
+.app-group-children {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Project rows */
+.proj-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+.proj-row:last-child { border-bottom: none; }
+.proj-row:hover { background: var(--surface2); }
+
+.proj-row-nested {
+  padding-left: 32px;
+  background: var(--bg);
+}
+.proj-row-nested:hover { background: var(--surface); }
+
+.proj-row-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Tree branch connector */
+.proj-tree-branch {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  position: relative;
+}
+.proj-tree-branch::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: -8px;
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+}
+.proj-tree-branch::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 6px;
+  width: 8px;
+  height: 1px;
+  background: var(--border);
+}
+
+.proj-row-path {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 280px;
+}
+
+/* Standalone section */
+.standalone-label {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
-  padding: 8px 0 4px;
+  padding: 8px 2px 4px;
+  margin-top: 4px;
 }
 
 .section-divider {
@@ -344,10 +456,6 @@ textarea:focus { border-color: var(--accent); }
   background: var(--border);
   margin: 16px 0 10px;
 }
-
-#apps-section { margin-bottom: 0; }
-
-.project-in-group td:first-child { padding-left: 20px; color: var(--text-muted); }
 
 /* ── App Feature Modal — wide variant ─────────────────────── */
 .modal-box-wide { max-width: 640px; }

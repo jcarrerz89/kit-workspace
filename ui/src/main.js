@@ -116,60 +116,87 @@ async function loadDashboard() {
 }
 
 // ── Projects ───────────────────────────────────────────────
+function _projectRow(name, p, indent) {
+  const driverBadge = p.driver === 'petfi-kit'
+    ? '<span class="badge badge-running">petfi-kit</span>'
+    : '<span class="badge badge-unknown">generic</span>'
+  return `
+    <div class="proj-row${indent ? ' proj-row-nested' : ''}">
+      <div class="proj-row-name">
+        ${indent ? '<span class="proj-tree-branch"></span>' : ''}
+        <strong>${escHtml(name)}</strong>
+      </div>
+      <div class="proj-row-driver">${driverBadge}</div>
+      <div class="proj-row-path mono">${escHtml(p.path)}</div>
+      <div class="proj-row-actions">
+        <button class="btn btn-sm btn-primary"
+          onclick="openFeatureModal('${escHtml(name)}', '${escHtml(p.driver)}')">
+          + Feature
+        </button>
+      </div>
+    </div>`
+}
+
 async function loadProjects() {
-  const tbody = document.getElementById('projects-body')
-  tbody.innerHTML = '<tr><td colspan="4" class="empty">Loading…</td></tr>'
+  const tree = document.getElementById('projects-tree')
+  tree.innerHTML = '<div class="empty">Loading…</div>'
 
   try {
     const home = await homeDir()
     const raw = await readFile(`${home}/.kit-workspace/workspace.json`)
     const ws = JSON.parse(raw)
-    const projects = Object.entries(ws.projects || {})
+    const projects = ws.projects || {}
     const apps = ws.apps || {}
 
-    // Render app groups
-    const appsSection = document.getElementById('apps-section')
-    const appsBody = document.getElementById('apps-body')
     const appEntries = Object.entries(apps)
+    const groupedProjects = new Set(Object.values(apps).flat())
+    const standaloneProjects = Object.entries(projects).filter(([n]) => !groupedProjects.has(n))
 
-    if (appEntries.length) {
-      appsSection.classList.remove('hidden')
-      appsBody.innerHTML = appEntries.map(([appName, projectList]) => `
-        <tr>
-          <td><strong>${escHtml(appName)}</strong></td>
-          <td class="mono">${projectList.map(p => escHtml(p)).join(', ')}</td>
-          <td>
+    const html = []
+
+    // ── App groups ──────────────────────────────────────────
+    for (const [appName, projectList] of appEntries) {
+      html.push(`
+        <div class="app-group">
+          <div class="app-group-header">
+            <div class="app-group-title">
+              <span class="app-group-icon">⬡</span>
+              <strong>${escHtml(appName)}</strong>
+              <span class="app-group-count">${projectList.length} project${projectList.length !== 1 ? 's' : ''}</span>
+            </div>
             <button class="btn btn-sm btn-primary"
               onclick="openAppFeatureModal('${escHtml(appName)}', ${JSON.stringify(projectList)})">
               + App Feature
             </button>
-          </td>
-        </tr>`).join('')
-    } else {
-      appsSection.classList.add('hidden')
+          </div>
+          <div class="app-group-children">`)
+
+      for (const pName of projectList) {
+        const p = projects[pName]
+        if (p) html.push(_projectRow(pName, p, true))
+      }
+
+      html.push('</div></div>')
     }
 
-    // Collect projects that belong to an app group (to mark them)
-    const groupedProjects = new Set(Object.values(apps).flat())
+    // ── Standalone projects ─────────────────────────────────
+    if (standaloneProjects.length) {
+      if (appEntries.length) {
+        html.push('<div class="standalone-label">Standalone projects</div>')
+      }
+      for (const [name, p] of standaloneProjects) {
+        html.push(_projectRow(name, p, false))
+      }
+    }
 
-    if (!projects.length) {
-      tbody.innerHTML = '<tr><td colspan="4" class="empty">No projects registered yet.</td></tr>'
+    if (!html.length) {
+      tree.innerHTML = '<div class="empty">No projects registered yet.</div>'
       return
     }
-    tbody.innerHTML = projects.map(([name, p]) => `
-      <tr${groupedProjects.has(name) ? ' class="project-in-group"' : ''}>
-        <td><strong>${escHtml(name)}</strong></td>
-        <td><span class="badge ${p.driver === 'petfi-kit' ? 'badge-running' : 'badge-unknown'}">${p.driver}</span></td>
-        <td class="mono">${escHtml(p.path)}</td>
-        <td>
-          <button class="btn btn-sm btn-primary"
-            onclick="openFeatureModal('${escHtml(name)}', '${p.driver}')">
-            + New Feature
-          </button>
-        </td>
-      </tr>`).join('')
+
+    tree.innerHTML = html.join('')
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="4" class="empty">${escHtml(String(e))}</td></tr>`
+    tree.innerHTML = `<div class="empty">${escHtml(String(e))}</div>`
   }
 }
 
