@@ -313,38 +313,68 @@ main {
   letter-spacing: 0.01em;
   color: var(--text);
 }
-.field input, .field select {
-  background: var(--surface2);
-  border: 1px solid var(--border-light);
-  color: var(--text);
-  padding: 8px 11px;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-  font-family: var(--font-mono);
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.field input:focus, .field select:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
-}
-.field-hint { font-size: 12px; color: var(--text-muted); }
-.settings-status { font-size: 12px; color: var(--success); align-self: center; }
-
-/* ── Select (reusable) ────────────────────────────────────── */
+/* ── Shared input/select base ─────────────────────────────── */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="search"],
+textarea,
 select {
   background: var(--surface2);
   border: 1px solid var(--border-light);
   color: var(--text);
-  padding: 6px 10px;
+  padding: 8px 12px;
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: 14px;
   font-family: var(--font-ui);
+  font-weight: 400;
+  line-height: 1.5;
   outline: none;
-  transition: border-color 0.15s;
-  cursor: pointer;
+  width: 100%;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
-select:focus { border-color: var(--accent); }
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+input[type="search"]:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+/* ── Select — custom arrow, no OS chrome ──────────────────── */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 32px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7a99' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+select:focus {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%234d9eff' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* Override back to auto-width when not inside .field */
+.log-controls select,
+.modal-box select,
+.field-row select {
+  width: auto;
+}
+
+.field input, .field select { width: 100%; }
+
+.field-hint { font-size: 12px; color: var(--text-muted); }
+.settings-status { font-size: 12px; color: var(--success); align-self: center; }
 
 /* ── Toggle label ─────────────────────────────────────────── */
 .toggle-label {
@@ -422,23 +452,7 @@ select:focus { border-color: var(--accent); }
   color: var(--text-muted);
 }
 
-textarea {
-  background: var(--surface2);
-  border: 1px solid var(--border-light);
-  color: var(--text);
-  padding: 8px 11px;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-  font-family: var(--font-ui);
-  resize: vertical;
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-  line-height: 1.55;
-}
-textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
-}
+textarea { resize: vertical; }
 
 /* ── Projects tree ────────────────────────────────────────── */
 #projects-tree {
